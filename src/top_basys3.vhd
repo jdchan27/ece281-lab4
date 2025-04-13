@@ -25,10 +25,13 @@ end top_basys3;
 architecture top_basys3_arch of top_basys3 is
 
     -- signal declarations
-    signal w_clk : std_logic;
+    signal w_clk_fsm : std_logic;
+    signal w_clk_tdm : std_logic;
     signal w_btn_fsm : std_logic;
     signal w_btn_clk : std_logic;
-    signal w_floor : std_logic_vector (3 downto 0);
+    signal w_floor1 : std_logic_vector (3 downto 0);
+    signal w_floor2 : std_logic_vector (3 downto 0);
+    signal w_data : std_logic_vector (3 downto 0);
   
 	-- component declarations
     component sevenseg_decoder is
@@ -71,17 +74,18 @@ architecture top_basys3_arch of top_basys3 is
         );
     end component clock_divider;
     
-    constant k_clock_divs	: natural	:= 25000000;
+    constant k_clock_divs1	: natural	:= 25000000;
+    constant k_clock_divs2	: natural	:= 50000;
 	
 begin
 	-- PORT MAPS ----------------------------------------
 	
 	sevenseg_decoder_inst : sevenseg_decoder
 	port map(
-	   i_Hex(3) => w_floor(3),
-	   i_Hex(2) => w_floor(2),
-	   i_Hex(1) => w_floor(1),
-	   i_Hex(0) => w_floor(0),
+	   i_Hex(3) => w_data(3),
+	   i_Hex(2) => w_data(2),
+	   i_Hex(1) => w_data(1),
+	   i_Hex(0) => w_data(0),
 	   o_seg_n(6) => seg(6),
 	   o_seg_n(5) => seg(5),
 	   o_seg_n(4) => seg(4),
@@ -92,35 +96,64 @@ begin
 	);
 	
 	
-	elevator_controller_fsm_0: elevator_controller_fsm
+	elevator_controller_fsm_1: elevator_controller_fsm
 	port map(
 	   is_stopped => sw(0),
 	   go_up_down => sw(1),
 	   i_reset => w_btn_fsm,
-	   i_clk => w_clk,
-	   o_floor(3) => w_floor(3),
-	   o_floor(2) => w_floor(2),
-	   o_floor(1) => w_floor(1),
-	   o_floor(0) => w_floor(0)
+	   i_clk => w_clk_fsm,
+	   o_floor(3) => w_floor1(3),
+	   o_floor(2) => w_floor1(2),
+	   o_floor(1) => w_floor1(1),
+	   o_floor(0) => w_floor1(0)
 	);
 	
-	clkdiv_inst : clock_divider 		--instantiation of clock_divider to take 
-        generic map ( k_DIV => k_clock_divs ) -- 2 Hz clock from 100 MHz
+	elevator_controller_fsm_2: elevator_controller_fsm
+	port map(
+	   is_stopped => sw(14),
+	   go_up_down => sw(15),
+	   i_reset => w_btn_fsm,
+	   i_clk => w_clk_fsm,
+	   o_floor(3) => w_floor2(3),
+	   o_floor(2) => w_floor2(2),
+	   o_floor(1) => w_floor2(1),
+	   o_floor(0) => w_floor2(0)
+	);
+	
+	clkdiv1 : clock_divider 		--instantiation of clock_divider to take 
+        generic map ( k_DIV => k_clock_divs1 ) -- 2 Hz clock from 100 MHz
         port map (						  
             i_clk   => clk,
             i_reset => w_btn_clk,
-            o_clk   => w_clk
-        );    
+            o_clk   => w_clk_fsm
+        );
+        
+    clkdiv2 : clock_divider 		--instantiation of clock_divider to take 
+        generic map ( k_DIV => k_clock_divs2 ) -- 1 Hz clock from 100 MHz
+        port map (						  
+            i_clk   => clk,
+            i_reset => w_btn_clk,
+            o_clk   => w_clk_tdm
+        );
+        
+    tdm_inst : TDM4
+	port map(
+	   i_clk => w_clk_tdm,
+	   i_reset => btnU,
+	   i_D3 => x"F",
+	   i_D2 => w_floor2,
+	   i_D1 => x"F",
+	   i_D0 => w_floor1,
+	   o_sel => an,
+	   o_data => w_data
+	);    
     	
 	
 	-- CONCURRENT STATEMENTS ----------------------------
 	
 	-- LED 15 gets the FSM slow clock signal. The rest are grounded.
-	led(15) <= w_clk;
+	led(15) <= w_clk_fsm;
 	led(14 downto 0) <= (others => '0');
-	
-	an(0) <= '0';
-	an(3 downto 1) <= (others => '1');
 	-- leave unused switches UNCONNECTED. Ignore any warnings this causes.
 	
 	-- reset signals
